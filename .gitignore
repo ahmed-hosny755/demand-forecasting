@@ -1,0 +1,32 @@
+# ── Data (keep the folders, not the files) ───────────────
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# ── Jupyter ──────────────────────────────────────────────
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# ── Models & experiment tracking ─────────────────────────
+models/*.pkl
+models/*.joblib
+mlruns/
+
+# ── Secrets & logs (never commit these) ──────────────────
+.env
+*.log
+
+# ── OS / editor ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

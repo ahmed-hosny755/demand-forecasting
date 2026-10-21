@@ -1,0 +1,60 @@
+{
+  "horizon_days": 7,
+  "split": {
+    "valid_start": "2023-07-01",
+    "test_start": "2023-10-01"
+  },
+  "xgboost_epidemic_unknown": {
+    "max_depth": 5,
+    "learning_rate": 0.1,
+    "subsample": 1.0,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 5,
+    "reg_lambda": 10
+  },
+  "xgboost_epidemic_known": {
+    "max_depth": 5,
+    "learning_rate": 0.1,
+    "subsample": 1.0,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 5,
+    "reg_lambda": 10
+  },
+  "features_B": [
+    "category",
+    "store_id",
+    "product_id",
+    "month",
+    "dayofweek",
+    "week",
+    "price",
+    "discount",
+    "promotion",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "roll_mean_7",
+    "roll_mean_28",
+    "roll_std_28",
+    "epidemic_lag_7"
+  ],
+  "features_A": [
+    "category",
+    "store_id",
+    "product_id",
+    "month",
+    "dayofweek",
+    "week",
+    "price",
+    "discount",
+    "promotion",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "roll_mean_7",
+    "roll_mean_28",
+    "roll_std_28",
+    "epidemic_lag_7",
+    "epidemic"
+  ]
+}

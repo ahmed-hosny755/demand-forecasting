@@ -1,0 +1,7 @@
+,MAE,RMSE,WAPE_%,Bias_%,WAPE_gain_vs_naive_%
+XGBoost (epidemic known),8.124,10.007,8.232,0.404,81.105
+XGBoost (epidemic unknown),9.005,11.221,9.125,1.192,79.054
+Ridge (epidemic known),26.45,34.134,26.802,1.923,38.479
+Series mean (train),33.558,41.842,34.005,4.57,21.945
+Rolling mean (7d),36.223,45.761,36.704,-0.352,15.748
+Naive-7,42.993,54.893,43.565,-0.438,0.0

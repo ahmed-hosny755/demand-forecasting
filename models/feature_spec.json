@@ -1,0 +1,89 @@
+{
+  "horizon_days": 7,
+  "lag_days": [
+    7,
+    14,
+    28
+  ],
+  "roll_windows": [
+    7,
+    28
+  ],
+  "features_epidemic_unknown": [
+    "category",
+    "store_id",
+    "product_id",
+    "month",
+    "dayofweek",
+    "week",
+    "price",
+    "discount",
+    "promotion",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "roll_mean_7",
+    "roll_mean_28",
+    "roll_std_28",
+    "epidemic_lag_7"
+  ],
+  "features_epidemic_known": [
+    "category",
+    "store_id",
+    "product_id",
+    "month",
+    "dayofweek",
+    "week",
+    "price",
+    "discount",
+    "promotion",
+    "lag_7",
+    "lag_14",
+    "lag_28",
+    "roll_mean_7",
+    "roll_mean_28",
+    "roll_std_28",
+    "epidemic_lag_7",
+    "epidemic"
+  ],
+  "categories": {
+    "category": [
+      "Clothing",
+      "Electronics",
+      "Furniture",
+      "Groceries",
+      "Toys"
+    ],
+    "store_id": [
+      "S001",
+      "S002",
+      "S003",
+      "S004",
+      "S005"
+    ],
+    "product_id": [
+      "P0001",
+      "P0002",
+      "P0003",
+      "P0004",
+      "P0005",
+      "P0006",
+      "P0007",
+      "P0008",
+      "P0009",
+      "P0010",
+      "P0011",
+      "P0012",
+      "P0013",
+      "P0014",
+      "P0015",
+      "P0016",
+      "P0017",
+      "P0018",
+      "P0019",
+      "P0020"
+    ]
+  },
+  "trained_until": "2023-09-30",
+  "n_estimators": 2000
+}

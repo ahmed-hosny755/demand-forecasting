@@ -1,0 +1,3 @@
+,service_level_%,avg_stock,avg_excess,excess_%_of_demand,unmet_%_of_demand
+Observed inventory,86.344,298.487,203.081,199.629,6.215
+"Forecast-based target (XGBoost (epidemic unknown), 95%)",90.049,115.029,13.939,13.702,0.629

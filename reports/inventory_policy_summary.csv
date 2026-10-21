@@ -1,0 +1,7 @@
+,service_level_%,avg_stock,avg_excess,excess_%_of_demand,unmet_%_of_demand,excess_reduction_vs_naive_%
+XGBoost (epidemic unknown),90.049,115.029,13.939,13.702,0.629,83.958
+XGBoost (epidemic known),93.902,116.004,14.629,14.38,0.348,83.165
+Ridge (epidemic known),93.738,155.516,54.945,54.011,1.138,36.768
+Series mean (train),92.295,165.647,65.716,64.599,1.768,24.372
+Rolling mean (7d),93.672,177.66,77.513,76.195,1.555,10.796
+Naive-7,93.623,186.904,86.894,85.417,1.69,0.0

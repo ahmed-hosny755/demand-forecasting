@@ -27,3 +27,8 @@ FEATURES_KNOWN = FEATURES_UNKNOWN + ["epidemic"]                                
 
 DEFAULT_PARAMS = {"max_depth": 5, "learning_rate": 0.1, "subsample": 1.0,
                   "colsample_bytree": 0.8, "min_child_weight": 5, "reg_lambda": 10}
+
+# ── Experiment tracking (MLflow) ──────────────────────────────
+MLFLOW_TRACKING_URI = f"sqlite:///{(ROOT / 'mlflow.db').as_posix()}"     # local database: runs + model registry
+MLFLOW_ARTIFACT_DIR = ROOT / "mlartifacts"                              # logged models and files
+MLFLOW_EXPERIMENT = "demand-forecasting"

@@ -12,3 +12,9 @@ xgboost>=2.0
 # Notebooks
 jupyterlab>=4.0
 ipykernel>=6.0
+
+# Experiment tracking
+mlflow>=3.0
+
+# Testing
+pytest>=8.0

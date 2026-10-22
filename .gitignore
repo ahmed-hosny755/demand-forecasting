@@ -30,3 +30,6 @@ mlruns/
 Thumbs.db
 .vscode/
 .idea/
+# ── MLflow local store ───────────────────────────────────
+mlflow.db
+mlartifacts/

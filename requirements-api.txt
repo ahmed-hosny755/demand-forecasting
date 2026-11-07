@@ -1,0 +1,8 @@
+# Runtime dependencies of the API only (the Docker image installs this file, not requirements.txt).
+# xgboost-cpu is the same `xgboost` package without GPU libraries, which keeps the image much smaller.
+pandas>=2.2
+numpy>=1.26
+xgboost-cpu>=2.0
+scikit-learn>=1.5     # required by xgboost's scikit-learn interface (XGBRegressor)
+fastapi>=0.110
+uvicorn[standard]>=0.29

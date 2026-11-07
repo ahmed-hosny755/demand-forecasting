@@ -1,9 +1,10 @@
 """Single source of truth for paths, forecast design and feature lists."""
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = ROOT / "data" / "processed" / "demand_clean.csv"      # created by notebook 01
-MODEL_DIR = ROOT / "models"
+DATA_PATH = Path(os.getenv("HISTORY_PATH", ROOT / "data" / "processed" / "demand_clean.csv"))   # created by notebook 01
+MODEL_DIR = Path(os.getenv("MODEL_DIR", ROOT / "models"))
 REPORT_DIR = ROOT / "reports"
 
 # ── Forecast design ───────────────────────────────────────────

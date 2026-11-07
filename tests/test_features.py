@@ -9,23 +9,6 @@ from src.features import (assert_complete_daily_panel, build_inference_row, buil
 FEATURES = cfg.HISTORY + ["epidemic_lag_7"]
 
 
-@pytest.fixture
-def panel() -> pd.DataFrame:
-    """Small synthetic panel: 2 stores x 2 products x 90 consecutive days."""
-    rng = np.random.default_rng(0)
-    dates = pd.date_range("2023-01-01", periods=90)
-    rows = []
-    for store in ["S001", "S002"]:
-        for product in ["P0001", "P0002"]:
-            for d in dates:
-                rows.append({"date": d, "store_id": store, "product_id": product, "category": "Toys",
-                             "demand": int(rng.integers(20, 200)), "price": 50.0, "discount": 10,
-                             "promotion": int(rng.integers(0, 2)), "epidemic": int(rng.integers(0, 2))})
-    df = pd.DataFrame(rows)
-    df["series_id"] = df["store_id"] + "_" + df["product_id"]
-    return df
-
-
 def test_lag_values_come_from_the_past(panel):
     frame = build_training_frame(panel)
     row = frame.iloc[10]

@@ -1,0 +1,11 @@
+services:
+  api:
+    build: .
+    image: demand-forecast-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # models and history data are not part of the image; they are mounted read-only
+      - ./models:/models:ro
+      - ./data/processed/demand_clean.csv:/data/demand_clean.csv:ro
+    restart: unless-stopped

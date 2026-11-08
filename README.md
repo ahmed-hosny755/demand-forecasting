@@ -1,270 +1,201 @@
 # Retail Demand Forecasting — 7-Day-Ahead Forecasts for 100 Store-Product Series
 
-> **Status:** 🚧 in progress — EDA, modeling, the inventory-decision analysis and experiment tracking (MLflow) are complete; sanity checks (ablation study) are next.
+![CI](https://github.com/ahmed-hosny755/demand-forecasting/actions/workflows/ci.yml/badge.svg)
 
-Forecasting daily product demand for a 5-store retailer, with a focus on **leakage-safe time-based validation**, honest baselines, error analysis by regime, category and store, and turning forecasts into **stock targets**.
+> **Status:** ✅ complete — EDA, modeling, inventory analysis, experiment tracking, API, Docker and CI.
+
+End-to-end demand forecasting project for a 5-store retailer: leakage-safe time-based validation, honest baselines, error analysis by regime, and a step from forecasts to **inventory decisions** — packaged as a tested, tracked and containerized service.
 
 ## TL;DR
-
-- **Task:** Forecast `demand` **7 days ahead** for 100 store-product series (5 stores × 20 products, 76,000 daily records, 2022-01-01 → 2024-01-30).
-- **Validation:** Strictly time-based — train < 2023-07-01, validation 2023-07-01 → 2023-09-30, and **test 2023-10-01 → 2024-01-30**. The test period contains epidemic episodes (25.4% of test days vs. 0% in validation), making it a regime-shift stress test.
-- **Forecasting results:** XGBoost achieves **8.23% WAPE** when the epidemic flag is known in advance and **9.13%** when it is unknown, versus **43.57%** for a naive "same day last week" forecast and **34.00%** for the per-series mean baseline.
-- **Inventory impact (indicative):** The forecast-based stock target using XGBoost with the epidemic flag unknown reduces average excess stock by **84.0% versus a Naive-7-based target**. It holds approximately **61% less stock** than the observed inventory while covering demand on more days (90.05% vs. 86.34%).
-- **Important caveat:** The model relies primarily on planned inputs such as price, discount, category and store. Demand-history features contribute very little in this dataset. See [Limitations and honest interpretation](#limitations-and-honest-interpretation).
+- **Task:** forecast `demand` **7 days ahead** for 100 store-product series (5 stores × 20 products, 76,000 daily records, 2022-01-01 → 2024-01-30).
+- **Validation:** strictly time-based — train < 2023-07-01, validation 2023-07-01 → 2023-09-30, **test 2023-10-01 → 2024-01-30**. The test period contains epidemic episodes (25.4% of test days vs. 0% in validation), which makes it a regime-shift stress test.
+- **Forecast accuracy:** XGBoost reaches **8.2% WAPE** when the epidemic flag is known in advance and **9.1%** when it is not, versus **43.6%** for a naive "same day last week" forecast and **34.0%** for the best baseline (per-series mean).
+- **Inventory impact:** at a matched service level (~94%), forecast-based stock targets need about **83% less excess stock** than targets built on the naive forecast.
+- **Engineering:** reusable `src/` package, unit tests for data leakage and train/serve skew, MLflow tracking and model registry, FastAPI service, Docker image, GitHub Actions CI.
+- **Important caveat:** the model relies almost entirely on planned inputs (price, discount, category, store) and barely uses demand history — see [Limitations](#limitations-and-honest-interpretation).
 
 ## Business problem
-
-Stockouts can cause lost sales, while overstock ties up capital. Reliable demand forecasts can help retailers estimate how much inventory to hold and make better replenishment decisions.
-
-This project evaluates both forecasting accuracy and the potential inventory implications of using the resulting predictions.
+Stockouts lose sales and overstock ties up capital. Reliable demand forecasts let the retailer decide how much to stock and when to reorder.
 
 ## Dataset
-
-- **Name:** `demand_forecasting`
-- **Source:** TODO — add the original dataset download link before publishing the repository.
-- **Size:** 5 stores × 20 products × 760 days = 76,000 daily records.
-- **Target:** `demand`.
-- **Features:** Price, discount, promotion, competitor pricing, weather, seasonality, epidemic status and inventory.
-
-The original and processed data files are not tracked in Git. Place the original CSV at `data/raw/demand_forecasting.csv`.
+- **Name:** `demand_forecasting` — **Source:** _add the download link here_
+- 5 stores × 20 products × 760 days. Target: `demand`. Features: price, discount, promotion, competitor price, weather, seasonality label, epidemic flag, inventory.
+- Data files are git-ignored. Place the CSV at `data/raw/demand_forecasting.csv`.
 
 ## Approach
+1. **EDA** (`01_eda.ipynb`): data quality, demand drivers, time-series structure, stockout analysis.
+2. **Forecast design** (`02_modeling.ipynb`):
+   - **Horizon:** 7 days. Every history feature is at least 7 days old.
+   - **Legal features only:** calendar, planned price/discount/promotion, category/store/product, demand lags (7/14/28 days), rolling mean/std of demand shifted by 7 days, and the epidemic status 7 days earlier.
+   - **Excluded on purpose:** `units_sold`, `units_ordered` and anything derived from them (outcomes), plus same-day `inventory_level`, `competitor_pricing` and `weather` (not known 7 days ahead).
+   - **Leakage unit tests:** assertions verify that lag and rolling features only use data that is ≥ 7 days old.
+   - **Two feature sets:** **A** includes the epidemic flag of the target day (a known scenario input); **B** does not.
+3. **Models:** Naive-7, rolling mean, per-series mean, Ridge, and XGBoost tuned with a 15-trial random search on the validation period (early stopping on MAE). The final model is refit on train + validation and evaluated **once** on the test set.
+4. **Inventory decisions** (`03_inventory_decisions.ipynb`): forecasts become stock targets with an error-based safety buffer.
 
-### 1. Exploratory data analysis
+## Key findings from EDA
 
-Notebook: `notebooks/01_eda.ipynb`
+**Data**
+- 76,000 daily records for **100 store-product series**. The panel is complete: no missing values, duplicates or missing days.
+- `product_id` alone is ambiguous (it appears under several categories across stores), so each `(store_id, product_id)` pair is treated as one series.
+- `units_sold` never exceeds stock, but it exceeds `demand` in 27.6% of rows, so `demand` is used as the target exactly as the dataset defines it.
 
-- Data quality and descriptive statistics.
-- Demand drivers and time-series structure.
-- Stockout-related analysis.
-- Visual exploration of trends and relationships.
+**What drives demand**
+- **Epidemic periods are the largest effect:** mean demand 70.2 vs. 112.9 (**−38%**) on 20% of days, arranged in separate episodes (regime shifts).
+- **Category** sets the scale: Groceries 121.0 … Furniture 73.6.
+- **Promotion** is associated with **+30%** demand (95.0 → 123.3), consistently across categories (+29% to +31%). Discount acts as a step: ≥ 15% matches the promotion level, with no extra lift beyond it.
+- Weather: Sunny 115.2 vs. Snowy 94.0. Store differences are small (100.6–106.9).
 
-### 2. Forecast design and feature engineering
+**Time-series behaviour**
+- No weekly cycle: weekday means differ by under 2%; the ACF decays slowly with no spikes at lags 7/14/21, and the PACF is significant only at lags 1–2.
+- The apparent "trend" is mostly the epidemic regime switching on and off.
 
-Notebook: `notebooks/02_modeling.ipynb`
+![Daily demand](reports/figures/08_daily_total_demand.png)
 
-- **Forecast horizon:** 7 days ahead.
-- **Leakage-safe features:** Calendar variables, planned price/discount/promotion, category, store, product, demand lags and rolling statistics shifted to respect the forecast horizon.
-- **Excluded features:** `units_sold`, `units_ordered` and variables derived from these outcomes, as well as same-day `inventory_level`, `competitor_pricing` and `weather`, which are not assumed to be known seven days ahead.
-- **Feature sets:**
-  - **A — Epidemic known:** Includes the target-day epidemic flag as a known scenario input.
-  - **B — Epidemic unknown:** Does not use the target-day epidemic flag.
-- **Leakage checks:** Unit tests verify the temporal constraints on history-based features.
+**Stockouts**
+- **11.4%** of store-product-days end in a stockout, and **17.5%** of total demand (≈ 1.39M units) is unmet.
+- Stockouts happen on high-demand days (mean demand 140.8 vs. 99.6).
+- Worst store-category pairs: S005 × Clothing (33.0%) and S004 × Electronics (29.6%).
 
-### 3. Models and evaluation
+## Forecasting results
+Test set: 2023-10-01 → 2024-01-30 (12,200 rows).
 
-The evaluated models are:
-
-- Naive-7
-- Rolling mean (7d)
-- Series mean (train)
-- Ridge (epidemic known)
-- XGBoost (epidemic unknown)
-- XGBoost (epidemic known)
-
-Model tuning uses the validation period. The final models are refitted on the training and validation data, then evaluated on the held-out test period.
-
-### 4. Inventory decisions
-
-Notebook: `notebooks/03_inventory_decisions.ipynb`
-
-The test-set forecasts are converted into inventory targets using a category-level forecast-error buffer. The analysis compares service levels, average stock, excess inventory and unmet demand across the forecasting policies.
-
-## Results
-
-**Test period:** 2023-10-01 → 2024-01-30 (12,200 rows).
-
-| Model | MAE | RMSE | WAPE (%) | Bias (%) | WAPE reduction vs. Naive-7 |
+| Model | MAE | RMSE | WAPE % | Bias % | WAPE reduction vs. Naive-7 |
 |---|---:|---:|---:|---:|---:|
 | **XGBoost (epidemic known)** | **8.12** | **10.01** | **8.23** | 0.40 | 81.1% |
 | XGBoost (epidemic unknown) | 9.01 | 11.22 | 9.13 | 1.19 | 79.0% |
 | Ridge (epidemic known) | 26.45 | 34.13 | 26.80 | 1.92 | 38.5% |
 | Series mean (train) | 33.56 | 41.84 | 34.00 | 4.57 | 22.0% |
-| Rolling mean (7d) | 36.22 | 45.76 | 36.70 | -0.35 | 15.8% |
-| Naive-7 | 42.99 | 54.89 | 43.57 | -0.44 | 0.0% |
+| Rolling mean (7d) | 36.22 | 45.76 | 36.70 | −0.35 | 15.8% |
+| Naive-7 | 42.99 | 54.89 | 43.57 | −0.44 | 0.0% |
 
 ![Forecast vs actual](reports/figures/16_forecast_vs_actual.png)
 
 ### Error analysis
-
-- **Regime changes:** On rows where epidemic status differs from seven days earlier, Naive-7 reaches 60.9% WAPE, compared with 39.1% otherwise. XGBoost remains more stable: 10.9% vs. 8.7% for the epidemic-unknown model and 9.1% vs. 8.0% for the epidemic-known model.
-- **Epidemic days:** XGBoost (epidemic known) reaches 11.1% WAPE on epidemic days versus 7.6% on normal days.
-- **By category:** Clothing is the easiest category (7.3–7.4% WAPE), while Furniture and Toys are among the hardest (9.2–11.6%).
-- **Bias:** All models are relatively close to unbiased, with absolute bias at or below 1.2%, except for the series mean (+4.57%) and Ridge (+1.92%).
+- **Regime changes** (23.0% of test rows, where the epidemic status differs from 7 days earlier) break history-based forecasts: Naive-7 has 60.9% WAPE on these rows vs. 39.1% otherwise. XGBoost stays stable: 10.9% vs. 8.7% (epidemic unknown) and 9.1% vs. 8.0% (epidemic known).
+- **Epidemic days are harder** than normal days: 11.1% vs. 7.6% WAPE for XGBoost (epidemic known).
+- **By category:** Clothing is the easiest (7.3–7.4% WAPE); Furniture and Toys are the hardest (9.2–11.6%).
+- **Bias:** all models are close to unbiased (|Bias| ≤ 1.2%), except the per-series mean (+4.6%) and Ridge (+1.9%).
 
 ### What the model uses
-
 ![Permutation importance](reports/figures/17_permutation_importance.png)
 
-Permutation importance, measured as the increase in MAE when a feature is shuffled, shows that `price` dominates, followed by `category`, `product_id`, `store_id` and `discount`.
-
-**Demand-lag and rolling features have almost zero importance.** This suggests that the model's predictive performance depends primarily on the planned inputs available in this dataset. Feature importance describes predictive reliance, not causality.
+Permutation importance (increase in MAE when a feature is shuffled) shows that `price` dominates, followed by `category`, `product_id`, `store_id` and `discount`. **All demand-lag and rolling features have almost zero importance.** Importance shows what the model *uses*, not what *causes* demand.
 
 ## From forecasts to inventory decisions
+Notebook `03_inventory_decisions.ipynb` converts forecasts into **stock targets**: forecast + a safety buffer taken from past forecast errors (a quantile per category). Buffers are calibrated on Oct–Nov 2023 and evaluated on Dec 2023–Jan 2024, so there is no look-ahead.
 
-A forecast is useful when it helps improve a business decision. This project converts predictions into a stock target for each store-product-day:
+| Policy (95% target) | Achieved service level | Avg. excess units / store-product-day | Unmet demand |
+|---|---:|---:|---:|
+| Naive-7 | 93.6% | 86.9 | 1.7% |
+| Rolling mean (7d) | 93.7% | 77.5 | 1.6% |
+| Series mean | 92.3% | 65.7 | 1.8% |
+| Ridge | 93.7% | 54.9 | 1.1% |
+| XGBoost (epidemic unknown) | 90.1% | 13.9 | 0.6% |
+| XGBoost (epidemic known) | 93.9% | 14.6 | 0.4% |
 
-> `target stock = forecast + buffer`
+![Service level vs excess stock](reports/figures/18_service_level_tradeoff.png)
 
-The buffer is the 95th percentile of the forecast error (`demand - forecast`) estimated separately for each category.
-
-- **Calibration period:** 2023-10-01 → 2023-11-30 (6,100 rows; 30% epidemic days).
-- **Evaluation period:** 2023-12-01 → 2024-01-30 (6,100 rows; 21% epidemic days).
-
-This separation prevents the evaluation period from being used to estimate the buffers.
-
-**Metrics:**
-
-- **Service level:** Percentage of days when the target stock covers demand.
-- **Excess stock:** Units held above demand.
-- **Unmet demand:** Units of demand not covered by the target.
-
-### Policy comparison
-
-Evaluation period, with a nominal 95% target level.
-
-| Model used for the target | Service level (%) | Avg stock | Avg excess | Excess (% of demand) | Unmet (% of demand) | Excess reduction vs. Naive-7 |
-|---|---:|---:|---:|---:|---:|---:|
-| **XGBoost (epidemic unknown)** | 90.05 | 115.03 | **13.94** | 13.70 | **0.63** | **84.0%** |
-| XGBoost (epidemic known) | 93.90 | 116.00 | 14.63 | 14.38 | 0.35 | 83.2% |
-| Ridge (epidemic known) | 93.74 | 155.52 | 54.94 | 54.01 | 1.14 | 36.8% |
-| Series mean (train) | 92.30 | 165.65 | 65.72 | 64.60 | 1.77 | 24.4% |
-| Rolling mean (7d) | 93.67 | 177.66 | 77.51 | 76.20 | 1.55 | 10.8% |
-| Naive-7 | 93.62 | 186.90 | 86.89 | 85.42 | 1.69 | 0.0% |
-
-![Service level trade-off](reports/figures/18_service_level_tradeoff.png)
-
-The XGBoost-based target requires substantially less excess stock than the Naive-7 policy in this simulation.
-
-### Where the savings come from
-
-- **By epidemic status:** Naive-7 has 109 excess units during epidemic days versus 81 on normal days. XGBoost keeps excess around 13–16 units across both regimes.
-- **By category:** XGBoost's excess stock is approximately 10–16 units across categories, compared with 69–94 for Naive-7.
-
-### Comparison with observed inventory
-
-| Policy | Service level (%) | Avg stock | Avg excess | Excess (% of demand) | Unmet (% of demand) |
-|---|---:|---:|---:|---:|---:|
-| Observed inventory | 86.34 | 298.49 | 203.08 | 199.63 | 6.22 |
-| Forecast-based target (XGBoost, epidemic unknown, 95%) | 90.05 | 115.03 | 13.94 | 13.70 | 0.63 |
-
-In this indicative comparison, the forecast-based target covers demand on more days (90.05% vs. 86.34%), holds approximately 61% less stock and reduces average excess from 203.08 to 13.94 units per store-product-day.
-
-### Caveats for the inventory results
-
-- **The 95% service-level target was not reached.** The epidemic-unknown model achieved 90.05%. The buffers were calibrated on only two months with a different epidemic mix from the evaluation period. The shortfall is particularly noticeable for Toys (85.2%) and Furniture (87.3%). Longer calibration windows or buffers by category and regime are potential improvements.
-- **The observed-inventory comparison is indicative only.** `inventory_level` is the stock recorded on a given day, not necessarily the intended replenishment target. The simulation does not account for lead times, ordering costs, holding costs or stockout costs.
-- **The dataset appears synthetic.** The estimated inventory savings should not be interpreted as guaranteed real-world business outcomes.
-
-## Experiment tracking (MLflow)
-
-XGBoost experiments are logged with MLflow so model configurations, evaluation metrics and artifacts can be inspected and compared.
-
-- **Experiment:** `demand-forecasting`.
-- **Runs:** The supplied comparison screenshot shows four runs, with the names `epidemic_known` and `epidemic_unknown` appearing twice. The screenshot does not establish the total number of runs in the experiment.
-- **Logged parameters:** Feature-set configuration, XGBoost hyperparameters and experiment metadata. The visible comparison includes `min_child_weight`, `n_estimators`, `n_features`, `n_series`, `reg_lambda`, `rows_test`, `rows_train` and `seed`.
-- **Feature sets:** Epidemic known and epidemic unknown.
-- **Evaluation metrics:** Validation MAE during tuning and final test-set metrics, including MAE, RMSE, WAPE and Bias.
-- **Artifacts:** Trained model files in JSON format and the feature specification, where logged by the run.
-
-![MLflow runs comparison](reports/figures/mlflow_runs.png)
-
-The final test-set results are **9.13% WAPE for XGBoost (epidemic unknown)** and **8.23% WAPE for XGBoost (epidemic known)**.
-
-The screenshot confirms that runs can be compared by parameters, but it does not show the validation MAE values or identify the best validation run. Those details should be added only after checking the corresponding MLflow metrics.
-
-> MLflow supports reproducibility and experiment comparison. The test set is reserved for final evaluation rather than model selection.
-
-## Sanity checks
-
-> TODO: Complete the ablation study in section 14 of `02_modeling.ipynb`. Compare test-set WAPE for:
->
-> - All features.
-> - Without price.
-> - Without price, discount and promotion.
-> - Without lag features.
-> - History features only.
->
-> Add the results table and a short interpretation of how much the model relies on planned inputs versus demand history. Remove this section if the experiment is skipped.
+- At a matched service level (~94%), XGBoost needs about **83% less excess stock** than the naive forecast.
+- **Calibration drift:** without the epidemic flag the model reached 90.1% instead of the 95% target (88.2% on normal days, 96.8% on epidemic days); the epidemic-known model stayed close to the target in both regimes (93.8% / 94.5%). Regime-specific buffers would be the next improvement.
+- Compared with the stock the retailer actually held (298.5 units on average, demand covered on 86.3% of days), forecast-based targets average 115.0 units and cover 90.1% of days. This is **indicative only**: observed inventory also covers several days between deliveries, which this analysis does not model.
 
 ## Limitations and honest interpretation
+- The data looks **synthetic** (complete, no missing values, regular structure), so absolute accuracy should not be read as production performance.
+- The strong result mainly reflects how well the **planned inputs (price, discount, category, store)** explain demand in this dataset. History-based features add almost nothing, so this is closer to *demand modeling from planned inputs* than to classical time-series forecasting. The reason for the dominance of `price` was not investigated further.
+- Single hold-out period; the validation period contains no epidemic episodes.
+- `demand` is used exactly as defined in the dataset; `units_sold` exceeds `demand` in 27.6% of rows, so `demand` is not interpreted as exact "true customer demand".
+- The inventory analysis compares policies on historical data; it is not an inventory simulation (no lead times, order costs or capacity limits).
+- Feature importance and effects are **associations**, not causal estimates.
 
-- The data appears synthetic, with complete and highly regular records. Absolute accuracy may not represent production performance.
-- Predictive performance mainly reflects how planned inputs such as price, discount, category and store explain demand in this dataset. History-based features contribute very little.
-- The evaluation uses a single held-out test period, while the validation period contains no epidemic episodes.
-- `demand` is used as defined in the dataset. `units_sold` exceeds `demand` in 27.6% of rows, so `demand` is not assumed to be exact true customer demand.
-- Feature importance and observed relationships are associations, not causal estimates.
-- Inventory evaluation is a simplified single-period simulation without lead times or costs, and the nominal 95% service-level target was not fully achieved. See [Caveats for the inventory results](#caveats-for-the-inventory-results).
+## Engineering
+
+### Reusable code and tests
+Feature engineering, training and evaluation live in `src/` and are shared by training and serving. Unit tests cover:
+- **Data leakage:** changing demand after the forecast origin must not change a day's features.
+- **Train/serve consistency:** the single-row inference code must reproduce the training features, and the API must return the same forecast as the training pipeline.
+- API validation and error codes, and MLflow logging.
+
+```bash
+python -m pytest -q
+```
+
+### Experiment tracking (MLflow)
+Every training run is tracked with **MLflow** (parameters, test metrics, baseline comparison, feature list, git commit) and the models are registered in the MLflow Model Registry. Re-running the training script reproduces the notebook results (WAPE 8.2% with the epidemic flag, 8.8% without).
+
+```bash
+python -m src.train                                    # trains both models and logs two runs
+mlflow ui --backend-store-uri sqlite:///mlflow.db      # open http://127.0.0.1:5000
+```
+
+### API (FastAPI)
+A FastAPI service serves 7-day-ahead forecasts using the same feature code as training.
+
+```bash
+uvicorn src.api.main:app --reload      # interactive docs: http://127.0.0.1:8000/docs
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health`, `GET /info` | health check, model and history information |
+| `GET /series` | store-product series that can be forecast |
+| `POST /predict`, `POST /predict/batch` | single and batch forecasts |
+
+Example request body for `POST /predict`:
+```json
+{"store_id": "S001", "product_id": "P0001", "target_date": "2024-02-04",
+ "price": 72.7, "discount": 10, "promotion": 1}
+```
+The forecast date must be within 7 days after the last day of history (the models need 35 days of past demand before the forecast origin); otherwise the API returns `422` with an explanation. If the optional `epidemic` field is sent, the epidemic-known model is used.
+
+### Docker
+The image contains only the code. The trained models and the history file are **mounted at run time** (they are not part of the repository). The container runs as a non-root user and has a health check.
+
+```bash
+python -m src.train              # creates the models in ./models
+docker compose up --build        # serves the API on http://127.0.0.1:8000/docs
+```
+
+### Continuous integration
+GitHub Actions runs the tests on every push (Python 3.12 and 3.13) and checks that the Docker image builds.
 
 ## Project structure
-
-```text
+```
 demand-forecasting/
-├── data/
-│   ├── raw/                  # Original CSV (not tracked)
-│   └── processed/            # Cleaned data and predictions (not tracked)
+├── .github/workflows/ci.yml   # tests + Docker build on every push
+├── data/                      # raw and processed data (not tracked)
 ├── notebooks/
-│   ├── 01_eda.ipynb          # Data quality, drivers and time-series analysis
-│   ├── 02_modeling.ipynb     # Baselines, features, validation and XGBoost
-│   └── 03_inventory_decisions.ipynb
-├── src/                      # Reusable features, training and evaluation code
-├── tests/                    # Unit tests and train/serve consistency checks
-├── models/                   # Trained models and feature specification
-├── reports/
-│   └── figures/              # Forecast, importance, inventory and MLflow figures
-├── mlruns/                   # Local MLflow tracking data (not tracked in Git)
-├── requirements.txt
+│   ├── 01_eda.ipynb           # data quality, drivers, time-series analysis, stockouts
+│   ├── 02_modeling.ipynb      # baselines, lag features, time-based validation, XGBoost
+│   └── 03_inventory_decisions.ipynb   # forecasts → stock targets and service levels
+├── src/                       # features, training, MLflow tracking, serving, API
+├── tests/                     # leakage, train/serve consistency, API and tracking tests
+├── models/                    # trained XGBoost models (JSON) + feature spec
+├── reports/                   # figures, metrics and summaries
+├── Dockerfile · docker-compose.yml
+├── requirements.txt · requirements-api.txt
 └── README.md
 ```
 
 ## How to run
-
-Create and activate a virtual environment, install the dependencies and launch Jupyter:
-
 ```bash
-python -m venv .venv
-```
-
-On Windows:
-
-```powershell
-.venv\Scripts\Activate.ps1
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 jupyter lab
 ```
-
-Run the notebooks in order:
-
-1. `notebooks/01_eda.ipynb` — creates `data/processed/demand_clean.csv`.
-2. `notebooks/02_modeling.ipynb` — creates `data/processed/test_predictions.csv`.
-3. `notebooks/03_inventory_decisions.ipynb` — writes `reports/inventory_policy_summary.csv` and `reports/inventory_vs_observed.csv`.
-
-### Browse MLflow experiments
-
-From the project root, run:
-
-```bash
-mlflow ui --backend-store-uri ./mlruns
-```
-
-Then open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
-
-Select the `demand-forecasting` experiment to inspect runs, compare parameters and metrics, and review available artifacts.
+1. Place the dataset at `data/raw/demand_forecasting.csv`.
+2. Run the notebooks in order: `01_eda.ipynb` (creates `data/processed/demand_clean.csv`), `02_modeling.ipynb`, `03_inventory_decisions.ipynb`.
+3. Retrain from the command line (also creates the files the API needs): `python -m src.train`.
+4. Run the tests: `python -m pytest -q`.
 
 ## Tech stack
+Python · pandas · NumPy · scikit-learn · XGBoost · statsmodels · seaborn / matplotlib · MLflow · FastAPI · Pydantic · Docker · GitHub Actions · pytest · Jupyter
 
-Python 3.13 · pandas · NumPy · scikit-learn · XGBoost · MLflow · statsmodels · seaborn / matplotlib · Jupyter
-
-## Roadmap
-
-- [x] 01 — EDA and data quality.
-- [x] 02 — Baselines, lag features, time-based validation, XGBoost and error analysis.
-- [ ] Sanity checks / ablation study (planned inputs versus demand history).
-- [x] 03 — Turn forecasts into inventory decisions (stock targets and service levels).
-- [ ] Improve service-level calibration with longer calibration windows and buffers by category and regime.
-- [x] Experiment tracking (MLflow).
-- [ ] A small API / dashboard.
+## Possible next steps
+- Investigate why `price` dominates (ablation study, price–demand relationship within each series).
+- Regime-specific safety buffers to remove the calibration drift.
+- A rolling-origin backtest over several test periods instead of a single hold-out.
+- Cloud deployment of the container.
 
 ## Author
-
 **Ahmed Hosny** — [GitHub](https://github.com/ahmed-hosny755)
